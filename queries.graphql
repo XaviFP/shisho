@@ -1,0 +1,105 @@
+mutation CreateDeck {
+  createDeck(
+    input: {title: "GraphQL", description: "Learning GraphQL", isPublic: true, cards: [{title: "In which language is GraphQL written in?", answers: [{text: "Rust", isCorrect: false}, {text: "It is some sort of pseudoprotocol/pattern, not a project", isCorrect: true}]}]}
+  ) {
+    deck {
+      id
+      title
+      description
+      cards {
+        id
+        title
+        answers {
+          id
+          text
+          isCorrect
+        }
+      }
+    }
+  }
+}
+
+
+mutation DeleteDeck {
+  deleteDeck(id: "4ba0b78e-e81d-4662-beea-dae70a844766") {
+    success
+  }
+}
+
+
+query GetDeck{
+  deck(id: "3327efc8-b5e2-45b2-a13f-bdb1a896f7e4"){
+    id
+    title
+    description
+    cards {
+      id
+      title
+      answers {
+        id
+        text
+        isCorrect
+      }
+    }
+  }
+}
+
+
+
+query GetPopularDecks {
+  popularDecks(first:10){
+    edges {
+      node {
+        id
+        title
+        description
+        cards {
+          id
+          title
+          answers {
+            id
+            text
+            isCorrect
+          }
+        }
+      }
+      cursor
+    }
+    pageInfo {
+      hasPreviousPage
+      hasNextPage
+      startCursor
+      endCursor
+    }
+  }
+}
+
+
+
+query GetPopularDecks {
+  popularDecks(first:1, after: "3a272c54-4255-4518-8abf-1c9222c12a00"){
+    edges {
+      node {
+        id
+        title
+        description
+        cards {
+          id
+          title
+          answers {
+            id
+            text
+            isCorrect
+          }
+        }
+      }
+      cursor
+    }
+    pageInfo {
+      hasPreviousPage
+      hasNextPage
+      startCursor
+      endCursor
+    }
+  }
+}

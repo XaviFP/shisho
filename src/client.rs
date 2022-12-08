@@ -1,12 +1,16 @@
+use graphql_client::{reqwest::post_graphql, GraphQLQuery};
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 
-const SIGNUP_URL: &str = "http://localhost:8080/signup";
-const LOGIN_URL: &str = "http://localhost:8080/login";
-const GET_DECKS_URL: &str = "http://localhost:8080/decks";
-const GET_DECK_URL: &str = "http://localhost:8080/decks/";
-const CREATE_DECK_URL: &str = "http://localhost:8080/decks/create";
-const DELETE_DECK_URL: &str = "http://localhost:8080/decks/delete/";
+use self::{get_decky::GetDeckyDeck, get_popular_decks::{GetPopularDecksPopularDecks}};
+
+const GRAPHQL_URL: &str = "http://192.168.1.152:8080/query";
+const SIGNUP_URL: &str = "http://192.168.1.152:8080/signup";
+const LOGIN_URL: &str = "http://192.168.1.152:8080/login";
+//const GET_DECKS_URL: &str = "http://192.168.1.152:8080/decks";
+//const GET_DECK_URL: &str = "http://192.168.1.152:8080/decks/";
+const CREATE_DECK_URL: &str = "http://192.168.1.152:8080/decks/create";
+const DELETE_DECK_URL: &str = "http://192.168.1.152:8080/decks/delete/";
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -137,65 +141,84 @@ impl From<reqwest::StatusCode> for Error {
 }
 
 pub async fn get_decks(token: String) -> Result<Vec<Deck>, Error> {
-    let deck_response = reqwest::Client::new()
-        .get(GET_DECKS_URL)
-        .bearer_auth(token)
-        .send()
-        .await;
+    let client = reqwest::Client::builder()
+        .default_headers(
+            std::iter::once((
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+            .collect(),
+        )
+        .build()?;
 
-    match deck_response {
-        Ok(deck_res) => match deck_res.status() {
-            reqwest::StatusCode::OK => {
-                let deck_json = deck_res.json::<Vec<Deck>>().await;
-                match deck_json {
-                    Ok(decks) => {
-                        println!("{:#?}", decks);
-                        Ok(decks)
-                    }
-                    Err(err) => {
-                        println!("{:#?}", err);
-                        Err(Error::PayloadError)
-                    }
+    let response = post_graphql::<GetPopularDecks, _>(
+        &client,
+        GRAPHQL_URL,
+        get_popular_decks::Variables { first: Some(50) },
+    )
+    .await;
+
+    match response {
+        Ok(response) => {
+            if let Some(response_body) = response.data {
+                if let Some(decks_ql) = response_body.popular_decks {
+
+                    return Ok(decks_ql.into())
                 }
+
+                return Err(Error::PayloadError)
             }
-            _ => Err(deck_res.status().into()),
+
+            return Err(Error::PayloadError)
         },
-        Err(err) => {
-            println!("{:#?}", err);
-            Err(Error::from(err))
-        }
+
+        Err(err) => Err(Error::from(err)),
     }
 }
 
 pub async fn get_deck(token: String, id: String) -> Result<Deck, Error> {
-    let deck_response = reqwest::Client::new()
-        .get(GET_DECK_URL.to_owned() + &id)
-        .bearer_auth(token)
-        .send()
-        .await;
+    let client: reqwest::Client;
+    if let Ok(c) = reqwest::Client::builder()
+        .default_headers(
+            std::iter::once((
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+            .collect(),
+        )
+        .build() {
+            client = c;
+        } else {return Err(Error::NetworkError)}
 
-    match deck_response {
-        Ok(deck_res) => match deck_res.status() {
-            reqwest::StatusCode::OK => {
-                let deck_json = deck_res.json::<Deck>().await;
-                match deck_json {
-                    Ok(deck) => {
-                        println!("{:#?}", deck);
-                        Ok(deck)
-                    }
-                    Err(err) => {
-                        println!("{:#?}", err);
-                        Err(Error::PayloadError)
+    let response = post_graphql::<GetDecky, _>(
+        &client,
+        GRAPHQL_URL,
+        get_decky::Variables { id: id.clone() },
+    )
+    .await;
+
+    match response {
+        Ok(response) => {
+            if let Some(response_body) = response.data {
+                if let Some(d_ql) = response_body.deck {
+                    match d_ql.try_into() {
+                        Ok(deck) => {
+                            return Ok(deck)
+                        },
+                        Err(err) => {
+                            return Err(err)
+                        },
                     }
                 }
+                return Err(Error::PayloadError)
             }
-            _ => Err(deck_res.status().into()),
+            return Err(Error::PayloadError)
         },
         Err(err) => {
-            println!("{:#?}", err);
-            Err(Error::from(err))
-        }
+            return Err(Error::from(err))
+        },
     }
+
 }
 
 pub async fn delete_deck(token: String, deck_id: String) -> Result<reqwest::StatusCode, Error> {
@@ -246,5 +269,81 @@ pub async fn create_deck(token: String, deck: Deck) -> Result<Deck, Error> {
             println!("{:#?}", err);
             Err(Error::from(err))
         }
+    }
+}
+
+
+
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schema.graphql",
+    query_path = "get_deck.graphql",
+    response_derives = "Debug"
+)]
+struct GetDecky;
+
+impl TryFrom<GetDeckyDeck> for Deck {
+
+    type Error = crate::Error;
+
+    fn try_from(d_ql: GetDeckyDeck) -> Result<Self, Self::Error>{
+
+        let mut deck = Deck {
+            cards: vec![],
+            description: d_ql.description.clone(),
+            title: d_ql.title.clone(),
+            id: d_ql.id.clone(),
+        };
+        let c_ql = d_ql.cards.unwrap_or(vec![]);
+        for c in c_ql.iter() {
+            let mut c_answers: Vec<Answer> = vec![];
+            let c_card = c.as_ref().unwrap();
+
+            let ans_placeholder = vec![];
+            let a_ql = c_card.answers.as_ref().unwrap_or(&ans_placeholder);
+
+            if a_ql.len() == 0 {
+                return Err(Error::PayloadError)
+            }
+
+            for a in a_ql.iter() {
+                let a_answer = a.as_ref().unwrap();
+                c_answers.push(Answer {
+                    text: a_answer.text.clone(),
+                    is_correct: a_answer.is_correct,
+                });
+            }
+            deck.cards.push(Card {
+                title: c_card.title.clone(),
+                possible_answers: c_answers,
+            });
+        }
+        Ok(deck)
+    }
+}
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schema.graphql",
+    query_path = "query_popular_decks.graphql",
+    response_derives = "Debug"
+)]
+struct GetPopularDecks;
+
+impl From<GetPopularDecksPopularDecks> for Vec<Deck>{
+    fn from(decks_ql: GetPopularDecksPopularDecks) -> Self {
+        let mut decks: Vec<Deck> = vec![];
+        let edges = decks_ql.edges.unwrap();
+        for edge in edges.iter() {
+            let d_ql = edge.node.as_ref().unwrap();
+            decks.push(Deck {
+                cards: vec![],
+                description: d_ql.description.clone(),
+                title: d_ql.title.clone(),
+                id: d_ql.id.clone(),
+            })
+        }
+        decks
     }
 }
