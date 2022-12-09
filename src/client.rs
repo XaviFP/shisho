@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 
 use self::{
-    get_decky::GetDeckyDeck,
+    obtain_deck::ObtainDeckDeck,
     get_popular_decks::GetPopularDecksPopularDecks,
     new_deck::{CreateAnswerInput, CreateCardInput, CreateDeckInput, NewDeckCreateDeck, NewDeckCreateDeckDeck},
 };
@@ -202,10 +202,10 @@ pub async fn get_deck(token: String, id: String) -> Result<Deck, Error> {
         return Err(Error::NetworkError);
     }
 
-    let response = post_graphql::<GetDecky, _>(
+    let response = post_graphql::<ObtainDeck, _>(
         &client,
         GRAPHQL_URL,
-        get_decky::Variables { id: id.clone() },
+        obtain_deck::Variables { id: id.clone() },
     )
     .await;
 
@@ -248,7 +248,7 @@ pub async fn delete_deck(token: String, deck_id: String) -> Result<reqwest::Stat
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "schema.graphql",
-    query_path = "create_deck.graphql",
+    query_path = "new_deck.graphql",
     response_derives = "Debug"
 )]
 struct NewDeck;
@@ -331,15 +331,15 @@ pub async fn create_deck(token: String, deck: Deck) -> Result<Deck, Error> {
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "schema.graphql",
-    query_path = "get_deck.graphql",
+    query_path = "obtain_deck.graphql",
     response_derives = "Debug"
 )]
-struct GetDecky;
+struct ObtainDeck;
 
-impl TryFrom<GetDeckyDeck> for Deck {
+impl TryFrom<ObtainDeckDeck> for Deck {
     type Error = crate::Error;
 
-    fn try_from(d_ql: GetDeckyDeck) -> Result<Self, Self::Error> {
+    fn try_from(d_ql: ObtainDeckDeck) -> Result<Self, Self::Error> {
         let mut deck = Deck {
             cards: vec![],
             description: d_ql.description.clone(),
@@ -377,7 +377,7 @@ impl TryFrom<GetDeckyDeck> for Deck {
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "schema.graphql",
-    query_path = "query_popular_decks.graphql",
+    query_path = "popular_decks.graphql",
     response_derives = "Debug"
 )]
 struct GetPopularDecks;

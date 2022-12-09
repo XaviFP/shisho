@@ -1,4 +1,4 @@
-query GetDecky($id: ID!){
+query ObtainDeck($id: ID!){
   deck(id: $id){
     id
     title
