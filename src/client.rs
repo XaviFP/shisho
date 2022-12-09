@@ -3,18 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{self, Display};
 
 use self::{
-    obtain_deck::ObtainDeckDeck,
     get_popular_decks::GetPopularDecksPopularDecks,
-    new_deck::{CreateAnswerInput, CreateCardInput, CreateDeckInput, NewDeckCreateDeck, NewDeckCreateDeckDeck},
+    new_deck::{
+        CreateAnswerInput, CreateCardInput, CreateDeckInput, NewDeckCreateDeck,
+        NewDeckCreateDeckDeck,
+    },
+    obtain_deck::ObtainDeckDeck,
 };
 
 const GRAPHQL_URL: &str = "http://192.168.1.152:8080/query";
 const SIGNUP_URL: &str = "http://192.168.1.152:8080/signup";
 const LOGIN_URL: &str = "http://192.168.1.152:8080/login";
-//const GET_DECKS_URL: &str = "http://192.168.1.152:8080/decks";
-//const GET_DECK_URL: &str = "http://192.168.1.152:8080/decks/";
-//const CREATE_DECK_URL: &str = "http://192.168.1.152:8080/decks/create";
-const DELETE_DECK_URL: &str = "http://192.168.1.152:8080/decks/delete/";
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -227,20 +226,47 @@ pub async fn get_deck(token: String, id: String) -> Result<Deck, Error> {
 }
 
 pub async fn delete_deck(token: String, deck_id: String) -> Result<reqwest::StatusCode, Error> {
-    let deck_response = reqwest::Client::new()
-        .post(DELETE_DECK_URL.to_owned() + &deck_id)
-        .bearer_auth(token)
-        .send()
-        .await;
+    let client: reqwest::Client;
+    if let Ok(c) = reqwest::Client::builder()
+        .default_headers(
+            std::iter::once((
+                reqwest::header::AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            ))
+            .collect(),
+        )
+        .build()
+    {
+        client = c;
+    } else {
+        return Err(Error::NetworkError);
+    }
 
-    match deck_response {
-        Ok(deck_res) => match deck_res.status() {
-            reqwest::StatusCode::OK => Ok(reqwest::StatusCode::OK),
-            _ => Err(deck_res.status().into()),
+    let response = post_graphql::<RemoveDeck, _>(
+        &client,
+        GRAPHQL_URL,
+        remove_deck::Variables {
+            id: deck_id.clone(),
         },
+    )
+    .await;
+
+    match response {
+        Ok(response) => {
+            if let Some(response_body) = response.data {
+                if let Some(del_deck) = response_body.delete_deck {
+                    if let Some(_success) = del_deck.success {
+                        return Ok(reqwest::StatusCode::OK);
+                    }
+                    return Err(Error::PayloadError);
+                }
+                return Err(Error::PayloadError);
+            }
+            return Err(Error::PayloadError);
+        }
         Err(err) => {
             println!("{:#?}", err);
-            Err(Error::from(err))
+            return Err(Error::from(err));
         }
     }
 }
@@ -407,7 +433,7 @@ impl TryFrom<NewDeckCreateDeck> for Deck {
         if let Some(deck) = d.deck {
             d_ql = deck;
         } else {
-            return Err(Error::PayloadError)
+            return Err(Error::PayloadError);
         }
         let mut deck = Deck {
             cards: vec![],
@@ -442,3 +468,11 @@ impl TryFrom<NewDeckCreateDeck> for Deck {
         Ok(deck)
     }
 }
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "schema.graphql",
+    query_path = "remove_deck.graphql",
+    response_derives = "Debug"
+)]
+struct RemoveDeck;
