@@ -1,0 +1,16 @@
+query ObtainDeck($id: ID!){
+  deck(id: $id){
+    id
+    title
+    description
+    cards {
+      id
+      title
+      answers {
+        id
+        text
+        isCorrect
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+mutation NewDeck($input: CreateDeckInput!) {
+  createDeck(
+    input: $input
+  ) {
+    deck {
+      id
+      title
+      description
+      cards {
+        id
+        title
+        answers {
+          id
+          text
+          isCorrect
+        }
+      }
+    }
+  }
+}

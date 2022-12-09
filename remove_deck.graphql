@@ -1,0 +1,5 @@
+mutation RemoveDeck($id: ID!) {
+  deleteDeck(id: $id) {
+    success
+  }
+}

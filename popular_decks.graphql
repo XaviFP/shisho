@@ -1,0 +1,11 @@
+query GetPopularDecks($first: Int){
+  popularDecks(first: $first){
+    edges {
+      node {
+        id
+        title
+        description
+      }
+    }
+  }
+}
