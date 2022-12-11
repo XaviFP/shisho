@@ -11,9 +11,9 @@ use self::{
     obtain_deck::ObtainDeckDeck,
 };
 
-const GRAPHQL_URL: &str = "http://192.168.1.152:8080/query";
-const SIGNUP_URL: &str = "http://192.168.1.152:8080/signup";
-const LOGIN_URL: &str = "http://192.168.1.152:8080/login";
+const GRAPHQL_URL: &str = "http://localhost:8080/query";
+const SIGNUP_URL: &str = "http://localhost:8080/signup";
+const LOGIN_URL: &str = "http://localhost:8080/login";
 
 #[derive(Debug, Clone)]
 pub enum Error {
