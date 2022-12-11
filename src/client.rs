@@ -11,9 +11,9 @@ use self::{
     obtain_deck::ObtainDeckDeck,
 };
 
-const GRAPHQL_URL: &str = "http://192.168.1.152:8080/query";
-const SIGNUP_URL: &str = "http://192.168.1.152:8080/signup";
-const LOGIN_URL: &str = "http://192.168.1.152:8080/login";
+const GRAPHQL_URL: &str = "http://localhost:8080/query";
+const SIGNUP_URL: &str = "http://localhost:8080/signup";
+const LOGIN_URL: &str = "http://localhost:8080/login";
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -411,7 +411,7 @@ struct GetPopularDecks;
 impl From<GetPopularDecksPopularDecks> for Vec<Deck> {
     fn from(decks_ql: GetPopularDecksPopularDecks) -> Self {
         let mut decks: Vec<Deck> = vec![];
-        let edges = decks_ql.edges.unwrap();
+        let edges = decks_ql.edges.unwrap_or(vec![]);
         for edge in edges.iter() {
             let d_ql = edge.node.as_ref().unwrap();
             decks.push(Deck {
