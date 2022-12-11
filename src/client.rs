@@ -411,7 +411,7 @@ struct GetPopularDecks;
 impl From<GetPopularDecksPopularDecks> for Vec<Deck> {
     fn from(decks_ql: GetPopularDecksPopularDecks) -> Self {
         let mut decks: Vec<Deck> = vec![];
-        let edges = decks_ql.edges.unwrap();
+        let edges = decks_ql.edges.unwrap_or(vec![]);
         for edge in edges.iter() {
             let d_ql = edge.node.as_ref().unwrap();
             decks.push(Deck {
