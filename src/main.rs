@@ -12,6 +12,8 @@ use iced::{
     time::{Duration, Instant},
     Alignment, Application, Command, Element, Length, Padding, Settings, Subscription, Theme,
 };
+use iced_aw::native::Modal;
+use serde::{Deserialize, Serialize};
 
 const ANSWER_DELAY: Duration = Duration::new(1, 0);
 const RESULTS_DELAY: Duration = Duration::new(2, 0);
@@ -40,6 +42,8 @@ struct Shisho {
     score: f32,
     edit_deck: EditDeck,
     pending_operation: PendingOperation,
+    import_file_path: String,
+    show_import_file_dialog: bool,
 }
 
 #[derive(Debug)]
@@ -108,6 +112,10 @@ enum Message {
     FocusNext,
     FocusPrevious,
     KeyboardAnswer(usize),
+    ImportFilePathChanged(String),
+    ImportFile,
+    ShowDialog,
+    HideDialog,
     None(usize),
 }
 
@@ -147,6 +155,8 @@ impl Application for Shisho {
                 edit_deck: EditDeck::new(),
                 first_login: true,
                 pending_operation: PendingOperation::None,
+                import_file_path: "".to_owned(),
+                show_import_file_dialog: false,
             },
             Command::none(),
         )
@@ -231,13 +241,14 @@ impl Application for Shisho {
                         self.state = States::Loaded;
 
                         let index = self.decks.len() - 1;
+                        self.show_import_file_dialog = false;
                         self.select_deck(index)
                     }
                     States::Edit => {
                         let id = self.decks[self.selected_deck].id.clone();
                         self.decks[self.selected_deck] = deck;
                         self.state = States::Details;
-
+                        self.show_import_file_dialog = false;
                         Command::perform(
                             delete_deck(self.token.clone(), id),
                             Message::HandleDeleteDeckResponse,
@@ -390,13 +401,12 @@ impl Application for Shisho {
                 Command::none()
             }
             Message::AnswerTextChanged((card_index, answer_index), new_text) => {
-                self.edit_deck.cards[card_index].possible_answers[answer_index].text = new_text;
+                self.edit_deck.cards[card_index].answers[answer_index].text = new_text;
 
                 Command::none()
             }
             Message::AnswerIsCorrectChanged((card_index, answer_index), is_correct) => {
-                self.edit_deck.cards[card_index].possible_answers[answer_index].is_correct =
-                    is_correct;
+                self.edit_deck.cards[card_index].answers[answer_index].is_correct = is_correct;
 
                 Command::none()
             }
@@ -423,8 +433,7 @@ impl Application for Shisho {
                     self.state = States::Round;
                     self.selected_answers = Vec::new();
                     for card in self.decks[self.selected_deck].cards.iter() {
-                        self.selected_answers
-                            .push(vec![false; card.possible_answers.len()])
+                        self.selected_answers.push(vec![false; card.answers.len()])
                     }
                 }
 
@@ -517,7 +526,7 @@ impl Application for Shisho {
             }
             Message::AddAnswer(card_index) => {
                 self.edit_deck.cards[card_index]
-                    .possible_answers
+                    .answers
                     .push(EditAnswer::new());
 
                 Command::none()
@@ -529,7 +538,7 @@ impl Application for Shisho {
             }
             Message::DeleteAnswer(card_index, answer_index) => {
                 self.edit_deck.cards[card_index]
-                    .possible_answers
+                    .answers
                     .remove(answer_index);
 
                 Command::none()
@@ -545,6 +554,33 @@ impl Application for Shisho {
                 Command::none()
             }
             Message::None(_) => Command::none(),
+            Message::ImportFilePathChanged(path) => {
+                self.import_file_path = path;
+
+                Command::none()
+            }
+            Message::ShowDialog => {
+                self.show_import_file_dialog = true;
+
+                Command::none()
+            }
+            Message::HideDialog => {
+                self.show_import_file_dialog = false;
+
+                Command::none()
+            }
+            Message::ImportFile => {
+                let deck = import_deck_from_file(&self.import_file_path);
+                if deck.is_err() {
+                    dbg!(deck.err());
+                    Command::none()
+                } else {
+                    Command::perform(
+                        create_deck(self.token.clone(), deck_from_edit_deck(&deck.unwrap())),
+                        Message::HandleCreateDeckResponse,
+                    )
+                }
+            }
         }
     }
 
@@ -941,7 +977,7 @@ impl Shisho {
         .size(35)];
 
         let answers_column = self.decks[self.selected_deck].cards[self.selected_card]
-            .possible_answers
+            .answers
             .iter()
             .enumerate()
             .fold(
@@ -1041,8 +1077,8 @@ impl Shisho {
                     .max_width(400),
                 |cards_column, (card_index, card)| {
                     let correct_card =
-                        card_is_correct(&card.possible_answers, &self.selected_answers[card_index]);
-                    let answers_column = card.possible_answers.iter().enumerate().fold(
+                        card_is_correct(&card.answers, &self.selected_answers[card_index]);
+                    let answers_column = card.answers.iter().enumerate().fold(
                         column![].width(iced::Length::Units(400)),
                         |answers_column, (answer_index, answer)| {
                             let mut is_selected = None;
@@ -1139,7 +1175,7 @@ impl Shisho {
         let cards = self.edit_deck.cards.iter().enumerate().fold(
             column![].padding(Padding::from([0, 12, 0, 12])).spacing(10),
             |cards, (card_index, card)| {
-                let answers = card.possible_answers.iter().enumerate().fold(
+                let answers = card.answers.iter().enumerate().fold(
                     column![],
                     |answers, (answer_index, answer)| {
                         let text_row = row![
@@ -1221,19 +1257,15 @@ impl Shisho {
         match self.state {
             States::Create => {
                 button_row = button_row
-                    .push(
-                        button(text("Back to deck"))
-                            .on_press(Message::CancelRound(TargetView::Welcome)),
-                    )
-                    .push(button(text("Create deck")).on_press(Message::SendCreateDeckRequest))
+                    .push(button(text("Back")).on_press(Message::CancelRound(TargetView::Welcome)))
+                    .push(button(text("Create")).on_press(Message::SendCreateDeckRequest))
+                    .push(button("Import deck").on_press(Message::ShowDialog))
             }
             States::Edit => {
                 button_row = button_row
-                    .push(
-                        button(text("Back to deck"))
-                            .on_press(Message::CancelRound(TargetView::Details)),
-                    )
+                    .push(button(text("Back")).on_press(Message::CancelRound(TargetView::Details)))
                     .push(button(text("Save changes")).on_press(Message::SendCreateDeckRequest))
+                    .push(button("Import deck").on_press(Message::ShowDialog))
             }
             _ => {}
         }
@@ -1242,11 +1274,47 @@ impl Shisho {
             .align_items(Alignment::Center)
             .spacing(15);
 
-        container(content)
+        let view_content = container(content)
             .width(Length::Fill)
             .center_x()
-            .align_x(iced::alignment::Horizontal::Center)
+            .align_x(iced::alignment::Horizontal::Center);
+
+        Modal::new(self.show_import_file_dialog, view_content, || {
+            iced_aw::native::Card::new(
+                text("Choose JSON file"),
+                column![
+                    text("Write path to JSON file to import below:"),
+                    text_input(
+                        "Import file path",
+                        &self.import_file_path,
+                        Message::ImportFilePathChanged
+                    )
+                    .on_submit(Message::SendSignUp)
+                ],
+            )
+            .foot(
+                row![]
+                    .spacing(10)
+                    .padding(5)
+                    .width(Length::Fill)
+                    .push(
+                        button(text("Cancel").horizontal_alignment(Horizontal::Center))
+                            .width(Length::Fill)
+                            .on_press(Message::HideDialog),
+                    )
+                    .push(
+                        button(text("Import").horizontal_alignment(Horizontal::Center))
+                            .width(Length::Fill)
+                            .on_press(Message::ImportFile),
+                    ),
+            )
+            .max_width(500)
+            .on_close(Message::HideDialog)
             .into()
+        })
+        .backdrop(Message::HideDialog)
+        .on_esc(Message::HideDialog)
+        .into()
     }
 }
 
@@ -1278,7 +1346,7 @@ fn refresh_icon() -> iced::widget::Text<'static> {
 fn calculate_score(cards: &Vec<Card>, chosen: &Vec<Vec<bool>>) -> f32 {
     let mut correct_cards = 0;
     for (index, card) in cards.iter().enumerate() {
-        if card_is_correct(&card.possible_answers, &chosen[index]) {
+        if card_is_correct(&card.answers, &chosen[index]) {
             correct_cards += 1;
         }
     }
@@ -1298,11 +1366,17 @@ fn get_selected_deck_info(deck: &Deck) -> (String, String) {
     (deck.title.clone(), deck.description.clone())
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct EditDeck {
+    #[serde(default = "empty_id")]
     id: String,
     title: String,
     description: String,
     cards: Vec<EditCard>,
+}
+
+fn empty_id() -> String {
+    "".to_owned()
 }
 
 impl EditDeck {
@@ -1344,16 +1418,19 @@ fn deck_from_edit_deck(edit_deck: &EditDeck) -> client::Deck {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct EditCard {
     title: String,
-    possible_answers: Vec<EditAnswer>,
+    answers: Vec<EditAnswer>,
+    explanation: String,
 }
 
 impl EditCard {
     fn new() -> Self {
         EditCard {
             title: "".to_owned(),
-            possible_answers: Vec::new(),
+            answers: Vec::new(),
+            explanation: "".to_owned(),
         }
     }
 }
@@ -1362,11 +1439,8 @@ impl From<&client::Card> for EditCard {
     fn from(card: &client::Card) -> Self {
         EditCard {
             title: card.title.clone(),
-            possible_answers: card
-                .possible_answers
-                .iter()
-                .map(|answer| answer.into())
-                .collect(),
+            answers: card.answers.iter().map(|answer| answer.into()).collect(),
+            explanation: card.explanation.clone(),
         }
     }
 }
@@ -1374,16 +1448,19 @@ impl From<&client::Card> for EditCard {
 fn card_from_edit_card(edit_card: &EditCard) -> client::Card {
     client::Card {
         title: edit_card.title.clone(),
-        possible_answers: edit_card
-            .possible_answers
+        answers: edit_card
+            .answers
             .iter()
             .map(|edit_answer| answer_from_edit_answer(edit_answer))
             .collect(),
+        explanation: edit_card.explanation.clone(),
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct EditAnswer {
     text: String,
+    #[serde(rename = "isCorrect")]
     is_correct: bool,
 }
 
@@ -1410,4 +1487,21 @@ fn answer_from_edit_answer(edit_answer: &EditAnswer) -> client::Answer {
         text: edit_answer.text.clone(),
         is_correct: edit_answer.is_correct,
     }
+}
+
+fn import_deck_from_file(path: &str) -> Result<EditDeck, Error> {
+    let deck_file = std::fs::read_to_string(path);
+    if deck_file.is_err() {
+        dbg!(deck_file.err());
+        return Err(client::Error::PayloadError);
+    }
+
+    let json_str = deck_file.unwrap();
+    let deck = serde_json::from_str::<EditDeck>(&json_str);
+    if deck.is_err() {
+        dbg!(deck.err());
+        return Err(client::Error::PayloadError);
+    }
+
+    return Ok(deck.unwrap());
 }
