@@ -65,7 +65,8 @@ fn empty_cards() -> Vec<Card> {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Card {
     pub title: String,
-    pub possible_answers: Vec<Answer>,
+    pub answers: Vec<Answer>,
+    pub explanation: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -295,10 +296,11 @@ impl From<Deck> for CreateDeckInput {
                 let mut card_ql = CreateCardInput {
                     title: card.title.clone(),
                     answers: vec![],
+                    explanation: Some(card.explanation.clone()),
                 };
 
                 card_ql.answers = card
-                    .possible_answers
+                    .answers
                     .iter()
                     .map(|answer| CreateAnswerInput {
                         text: answer.text.clone(),
@@ -393,7 +395,12 @@ impl TryFrom<ObtainDeckDeck> for Deck {
             }
             deck.cards.push(Card {
                 title: c_card.title.clone(),
-                possible_answers: c_answers,
+                answers: c_answers,
+                explanation: c_card
+                    .explanation
+                    .as_ref()
+                    .unwrap_or(&"".to_owned())
+                    .clone(),
             });
         }
         Ok(deck)
@@ -460,9 +467,15 @@ impl TryFrom<NewDeckCreateDeck> for Deck {
                     is_correct: a_answer.is_correct,
                 });
             }
+
             deck.cards.push(Card {
                 title: c_card.title.clone(),
-                possible_answers: c_answers,
+                answers: c_answers,
+                explanation: c_card
+                    .explanation
+                    .as_ref()
+                    .unwrap_or(&"".to_owned())
+                    .clone(),
             });
         }
         Ok(deck)

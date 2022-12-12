@@ -9,6 +9,7 @@ mutation NewDeck($input: CreateDeckInput!) {
       cards {
         id
         title
+        explanation
         answers {
           id
           text
