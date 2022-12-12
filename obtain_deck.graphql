@@ -6,6 +6,7 @@ query ObtainDeck($id: ID!){
     cards {
       id
       title
+      explanation
       answers {
         id
         text
